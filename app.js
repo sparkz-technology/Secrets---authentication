@@ -1,5 +1,6 @@
 //jshint esversion:6
-// level 1 security using username and password only
+// level 1 security using username and password
+require("dotenv").config(); // to use dotenv
 const express = require("express"); // to use express
 const bodyParser = require("body-parser"); // to use body parser
 const mongoose = require("mongoose"); // to use mongoose
@@ -17,7 +18,7 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
 }); // to create schema
-const secret = "thisisourlittlesecret."; // to create secret
+const secret = process.env.SECRET; // to use dotenv
 userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] }); // to use mongoose encryption
 const User = new mongoose.model("User", userSchema); // to create model
 // Home route
