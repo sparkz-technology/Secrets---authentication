@@ -5,8 +5,9 @@ const express = require("express"); // to use express
 const bodyParser = require("body-parser"); // to use body parser
 const mongoose = require("mongoose"); // to use mongoose
 const ejs = require("ejs"); // to use ejs
+// const encrypt = require("mongoose-encryption"); // to use mongoose encryption
+const md5 = require("md5"); // to use md5 hashing
 const app = express(); // to use express
-const encrypt = require("mongoose-encryption"); // to use mongoose encryption
 const port = process.env.PORT || 3000; // to use heroku port or local port
 app.use(bodyParser.urlencoded({ extended: true })); // to use body parser
 app.use(express.static("public")); // to use static files like css, images, etc
@@ -19,7 +20,7 @@ const userSchema = new mongoose.Schema({
   password: String,
 }); // to create schema
 const secret = process.env.SECRET; // to use dotenv
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] }); // to use mongoose encryption
+// userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] }); // to use mongoose encryption
 const User = new mongoose.model("User", userSchema); // to create model
 // Home route
 app.get("/", function (req, res) {
@@ -37,7 +38,7 @@ app.get("/register", function (req, res) {
 app.post("/register", function (req, res) {
   const newUser = new User({
     email: req.body.username,
-    password: req.body.password,
+    password: md5(req.body.password),
   });
   try {
     newUser.save();
@@ -50,7 +51,7 @@ app.post("/register", function (req, res) {
 // post route for login
 app.post("/login", function (req, res) {
   const username = req.body.username;
-  const password = req.body.password;
+  const password = md5(req.body.password);
   try {
     User.findOne({ email: username }).then(function (foundUser) {
       if (foundUser) {
