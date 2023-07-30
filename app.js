@@ -6,7 +6,9 @@ const bodyParser = require("body-parser"); // to use body parser
 const mongoose = require("mongoose"); // to use mongoose
 const ejs = require("ejs"); // to use ejs
 // const encrypt = require("mongoose-encryption"); // to use mongoose encryption
-const md5 = require("md5"); // to use md5 hashing
+// const md5 = require("md5"); // to use md5 hashing
+const bcrypt = require("bcrypt"); // to use bcrypt hashing
+const saltRounds = 10; // to use bcrypt hashing/ salting
 const app = express(); // to use express
 const port = process.env.PORT || 3000; // to use heroku port or local port
 app.use(bodyParser.urlencoded({ extended: true })); // to use body parser
@@ -36,29 +38,35 @@ app.get("/register", function (req, res) {
 });
 // post route for register
 app.post("/register", function (req, res) {
-  const newUser = new User({
-    email: req.body.username,
-    password: md5(req.body.password),
+  bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
+    // to use bcrypt hashing/ salting
+    const newUser = new User({
+      email: req.body.username,
+      password: hash,
+    });
+    try {
+      newUser.save();
+      res.render("secrets.ejs");
+      console.log("User Registered successfully");
+    } catch (err) {
+      console.log(err);
+    }
   });
-  try {
-    newUser.save();
-    res.render("secrets.ejs");
-    console.log("User Registered successfully");
-  } catch (err) {
-    console.log(err);
-  }
 });
 // post route for login
 app.post("/login", function (req, res) {
   const username = req.body.username;
-  const password = md5(req.body.password);
+  const password = req.body.password;
   try {
     User.findOne({ email: username }).then(function (foundUser) {
       if (foundUser) {
-        if (foundUser.password === password) {
-          res.render("secrets.ejs");
-          console.log("User Logged in successfully");
-        }
+        bcrypt.compare(password, foundUser.password, function (err, result) {
+          // if (foundUser.password === password) {
+          if (result === true) {
+            res.render("secrets.ejs");
+            console.log("User Logged in successfully");
+          }
+        });
       }
     });
   } catch (err) {
