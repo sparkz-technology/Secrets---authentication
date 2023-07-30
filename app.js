@@ -5,6 +5,7 @@ const bodyParser = require("body-parser"); // to use body parser
 const mongoose = require("mongoose"); // to use mongoose
 const ejs = require("ejs"); // to use ejs
 const app = express(); // to use express
+const encrypt = require("mongoose-encryption"); // to use mongoose encryption
 const port = process.env.PORT || 3000; // to use heroku port or local port
 app.use(bodyParser.urlencoded({ extended: true })); // to use body parser
 app.use(express.static("public")); // to use static files like css, images, etc
@@ -16,6 +17,8 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
 }); // to create schema
+const secret = "thisisourlittlesecret."; // to create secret
+userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] }); // to use mongoose encryption
 const User = new mongoose.model("User", userSchema); // to create model
 // Home route
 app.get("/", function (req, res) {
