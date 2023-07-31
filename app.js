@@ -9,53 +9,90 @@ const express = require("express"); // to use express
 const bodyParser = require("body-parser"); // to use body parser
 const mongoose = require("mongoose"); // to use mongoose
 const ejs = require("ejs"); // to use ejs
-const jwt = require("jsonwebtoken"); // to use jsonwebtoken
+const session = require("express-session"); // to use session
+const passport = require("passport"); // to use passport
+const passportLocalMongoose = require("passport-local-mongoose"); // to use passport local mongoose
+const GoogleStrategy = require("passport-google-oauth20").Strategy; // to use google oauth 20
+const findOrCreate = require("mongoose-findorcreate"); // to use find or create
 const app = express(); // to use express
-const bcrypt = require("bcrypt"); // to use bcrypt
-const cookieParser = require("cookie-parser"); // to use cookie parser
-const { use } = require("passport");
 const port = process.env.PORT || 3000; // to use heroku port or local port
-app.use(cookieParser()); // to use cookie parser
 app.use(bodyParser.urlencoded({ extended: true })); // to use body parser
 app.use(express.static("public")); // to use static files like css, images, etc
 app.set("view engine", "ejs"); // to use ejs
-
+app.use(
+  session({
+    secret: "Our little secret.", // to use session
+    resave: false, // to use session// to save session
+    saveUninitialized: false, // to use session// to save session
+  }) // to use session
+);
+app.use(passport.initialize()); // to use passport// to initialize passport
+app.use(passport.session()); // to use passport// to use passport session
 mongoose.connect("mongodb://127.0.0.1:27017/userDB", {
   useNewUrlParser: true, // to remove deprecation warning// to use bodyParser
 }); // to connect to mongodb
-// Function to generate JWT token
-function generateToken(user) {
-  return jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1h" }); // Token expires in 1 hour
-}
-
-const authenticateToken = (req, res, next) => {
-  //   console.log("Cookies:", req.cookies);
-  const token = req.cookies.token;
-  if (!token) {
-    return res.sendStatus(401);
-  }
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    if (err) {
-      console.error("Token verification failed:", err);
-      return res.sendStatus(403);
-    }
-    console.log("Decoded user from token:", user);
-    req.user = user;
-    next();
-  });
-};
-
-// app.use(authenticateToken); // to use jwt// to authenticate token
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
+  googleId: String,
 }); // to create schema
+userSchema.plugin(passportLocalMongoose); // to use passport local mongoose// to hash and salt password and save it in mongodb
+userSchema.plugin(findOrCreate); // to use find or create
 const User = new mongoose.model("User", userSchema); // to create model
+passport.use(User.createStrategy()); // to use passport local mongoose// create strategy
+passport.serializeUser(function (user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function (id, done) {
+  User.findById(id)
+    .then((user) => {
+      done(null, user);
+    })
+    .catch((err) => {
+      done(err, null);
+    });
+});
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets",
+      userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+    },
+    function (accessToken, refreshToken, profile, done) {
+      console.log(profile);
+      console.log(accessToken);
+      console.log(refreshToken);
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return done(err, user);
+      });
+    }
+  )
+);
+
 // Home route
 app.get("/", function (req, res) {
   res.render("home.ejs");
 });
+// google route
+
+// to use google oauth 20// to use google oauth 20
+app.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["profile"] })
+);
+
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", {
+    successRedirect: "/secrets",
+    failureRedirect: "/login",
+  })
+);
+
 // login route
 app.get("/login", function (req, res) {
   res.render("login.ejs");
@@ -65,59 +102,60 @@ app.get("/register", function (req, res) {
   res.render("register.ejs");
 });
 // secrets route
-app.get("/secrets", authenticateToken, function (req, res) {
-  // The user object from JWT is accessible in req.user due to the authenticateToken middleware
-  res.render("secrets.ejs");
-});
-
-// post route for register
-app.post("/register", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({
-      email: username,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-    // to use jwt
-    const user = { username };
-    const token = generateToken(user);
-    res.cookie("token", token, { httpOnly: true });
-    res.redirect("/secrets");
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Internal Server Error");
+app.get("/secrets", function (req, res) {
+  if (req.isAuthenticated()) {
+    // to use passport local mongoose// to check if user is authenticated
+    res.render("secrets.ejs");
+  } else {
+    res.redirect("/login");
   }
+});
+// post route for register
+app.post("/register", function (req, res) {
+  User.register(
+    { username: req.body.username }, // to use passport local mongoose// to register user
+    req.body.password, // to use passport local mongoose// to register user
+    function (err, user) {
+      // to use passport local mongoose// to register user
+      if (err) {
+        console.log(err); // to use passport local mongoose// to register user
+        res.redirect("/register"); // to use passport local mongoose// to register user
+      } else {
+        passport.authenticate("local")(req, res, function () {
+          // to use passport local mongoose// to register user
+          res.redirect("/secrets"); // to use passport local mongoose// to register user
+        });
+      }
+    }
+  );
 });
 // post route for login
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const foundUser = await User.findOne({ email: username });
-    if (!foundUser) {
-      return res.status(404).send("User not found");
+app.post("/login", function (req, res) {
+  const user = new User({
+    // to use passport local mongoose// to login user
+    username: req.body.username, // to use passport local mongoose// to login user
+    password: req.body.password, // to use passport local mongoose// to login user
+  });
+  req.login(user, function (err) {
+    // to use passport local mongoose// to login user
+    if (err) {
+      console.log(err); // to use passport local mongoose// to login user
+    } else {
+      passport.authenticate("local")(req, res, function () {
+        // to use passport local mongoose// to login user
+        res.redirect("/secrets"); // to use passport local mongoose// to login user
+      });
     }
-    const passwordMatch = await bcrypt.compare(password, foundUser.password);
-    if (!passwordMatch) {
-      return res.status(401).send("Incorrect password");
-    }
-    // Set the Authorization header
-    const token = generateToken({ email: foundUser.email });
-    res.cookie("token", token, { httpOnly: true });
-    res.redirect("/secrets");
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Internal Server Error");
-  }
+  });
 });
-
-// Mount the Router object on the express app
 // post route for logout
 app.get("/logout", function (req, res) {
-  res.clearCookie("token");
-  res.redirect("/");
+  req.logout(function (err) {
+    if (err) {
+      console.log(err); // Handle any potential error here
+    }
+    res.redirect("/"); // Redirect after successful logout
+  });
 });
 app.listen(port, function () {
   // to listen on port
