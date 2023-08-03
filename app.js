@@ -35,6 +35,7 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
+  secret: String,
 }); // to create schema
 userSchema.plugin(passportLocalMongoose); // to use passport local mongoose// to hash and salt password and save it in mongodb
 userSchema.plugin(findOrCreate); // to use find or create
@@ -92,6 +93,37 @@ app.get(
     failureRedirect: "/login",
   })
 );
+app.get("/submit", function (req, res) {
+  if (req.isAuthenticated()) {
+    // to use passport local mongoose// to check if user is authenticated
+    res.render("submit.ejs");
+  } else {
+    res.redirect("/login");
+  }
+});
+app.post("/submit", function (req, res) {
+  try {
+    if (req.isAuthenticated()) {
+      const submittedSecret = req.body.secret;
+      console.log(req.user.id);
+      User.findById(req.user.id)
+        .then((foundUser) => {
+          if (foundUser) {
+            foundUser.secret = submittedSecret;
+            foundUser.save().then(() => {
+              res.redirect("/secrets");
+            });
+          }
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    }
+  } catch (error) {
+    console.log(error);
+    res.redirect("/login");
+  }
+});
 
 // login route
 app.get("/login", function (req, res) {
@@ -105,11 +137,20 @@ app.get("/register", function (req, res) {
 app.get("/secrets", function (req, res) {
   if (req.isAuthenticated()) {
     // to use passport local mongoose// to check if user is authenticated
-    res.render("secrets.ejs");
+    User.find({ secret: { $ne: null } })
+      .then((foundUsers) => {
+        res.render("secrets.ejs", { usersWithSecrets: foundUsers });
+      })
+      .catch((err) => {
+        // Handle the error here if needed
+        console.log(err);
+        res.redirect("/login");
+      });
   } else {
     res.redirect("/login");
   }
 });
+
 // post route for register
 app.post("/register", function (req, res) {
   User.register(
